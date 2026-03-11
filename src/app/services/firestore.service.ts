@@ -86,6 +86,19 @@ export class FirestoreService {
         for (const d of progressSnap.docs) await deleteDoc(d.ref);
     }
 
+    /**
+     * Get all words for a user across all topics.
+     */
+    async getAllWords(userId: string): Promise<Word[]> {
+        const topics = await this.getTopics(userId);
+        const allWords: Word[] = [];
+        for (const topic of topics) {
+            const words = await this.getWords(userId, topic.id!);
+            allWords.push(...words);
+        }
+        return allWords;
+    }
+
     // ─── Word Progress ────────────────────────────────────────────────────────
     async getWordProgressForTopic(userId: string, topicId: string): Promise<WordProgress[]> {
         const q = query(

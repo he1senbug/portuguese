@@ -16,7 +16,7 @@ import { APP_CONFIG } from '../../../core/app.constants';
         <div class="text-center mb-8">
           <div class="text-6xl mb-3">🇵🇹</div>
           <h1 class="text-3xl font-bold text-white">Português</h1>
-          <p class="text-gray-400 mt-1">Вивчай португальську з ШІ</p>
+          <p class="text-gray-400 mt-1">Вивчай португальську</p>
         </div>
 
         <div class="card p-6 space-y-5">

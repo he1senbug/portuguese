@@ -1,12 +1,12 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
 import { FirestoreService } from '../../services/firestore.service';
 import { ToastService } from '../../services/toast.service';
 import { NavbarComponent } from '../../shared/navbar/navbar.component';
 import { APP_CONFIG, ModelMode } from '../../core/app.constants';
-import { UserSettings } from '../../core/models';
 
 @Component({
   selector: 'app-settings',
@@ -142,6 +142,7 @@ export class SettingsComponent implements OnInit {
   private auth = inject(AuthService);
   private firestore = inject(FirestoreService);
   private toast = inject(ToastService);
+  private router = inject(Router);
 
   apiKey = '';
   apiKeySaved = signal(false);
@@ -224,5 +225,6 @@ export class SettingsComponent implements OnInit {
 
   async logout(): Promise<void> {
     await this.auth.logout();
+    this.router.navigate(['/auth/login']);
   }
 }

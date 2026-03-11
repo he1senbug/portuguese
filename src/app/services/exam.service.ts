@@ -10,28 +10,37 @@ const TENSE_LABELS: Record<string, string> = {
     imperativo: 'Imperativo (наказовий)',
 };
 
-const PERSONS = ['eu', 'tu', 'ele/ela', 'nós', 'vós', 'eles/elas'];
-
 @Injectable({ providedIn: 'root' })
 export class ExamService {
-    /**
-     * Generate exam questions for a set of words.
-     * Returns exactly APP_CONFIG.examQuestionsPerSession questions, or fewer if not enough words.
-     */
     generateQuestions(words: WordWithProgress[], count = APP_CONFIG.examQuestionsPerSession): ExamQuestion[] {
         if (words.length === 0) return [];
 
         const questions: ExamQuestion[] = [];
-        const shuffledWords = [...words].sort(() => Math.random() - 0.5);
+        let pool: WordWithProgress[] = [];
+        let isFirstCycle = true;
 
-        // Generate one question per word, cycling if needed
-        for (let i = 0; i < count; i++) {
-            const word = shuffledWords[i % shuffledWords.length];
+        // Try to generate exactly 'count' questions
+        while (questions.length < count) {
+            if (pool.length === 0) {
+                // First cycle: use fixed priority order from ProgressService
+                // Subsequent cycles: shuffle to avoid exact same order if recycling
+                pool = isFirstCycle ? [...words] : this.shuffle([...words]);
+                isFirstCycle = false;
+            }
+
+            const word = pool.shift()!;
             const q = this.generateQuestionForWord(word, words);
-            if (q) questions.push(q);
+
+            if (q) {
+                questions.push(q);
+            } else {
+                if (pool.length === 0 && questions.length < count) {
+                    break;
+                }
+            }
         }
 
-        return questions.slice(0, count);
+        return questions;
     }
 
     private generateQuestionForWord(word: WordWithProgress, allWords: WordWithProgress[]): ExamQuestion | null {
@@ -42,8 +51,6 @@ export class ExamService {
             possibleTypes.push('gender', 'plural');
         } else if (type === 'verb') {
             possibleTypes.push('conjugation');
-        } else if (type === 'adjective') {
-            possibleTypes.push('comparative', 'superlative');
         }
 
         const qType = possibleTypes[Math.floor(Math.random() * possibleTypes.length)];
@@ -177,32 +184,6 @@ export class ExamService {
                 };
             }
 
-            case 'comparative': {
-                if (!word.comparative) return null;
-                const wrongComparatives = (word.distractors || []).slice(0, 3).map(d => `mais ${d}`);
-                const opts = this.ensureCorrectInOptions(wrongComparatives, word.comparative);
-                return {
-                    type: qType,
-                    word,
-                    question: `Яка порівняльна форма прикметника "${word.word}" (${word.translation})?`,
-                    correctAnswer: word.comparative,
-                    options: opts,
-                };
-            }
-
-            case 'superlative': {
-                if (!word.superlative) return null;
-                const wrongSuperlatives = (word.distractors || []).slice(0, 3).map(d => `o/a mais ${d}`);
-                const opts = this.ensureCorrectInOptions(wrongSuperlatives, word.superlative);
-                return {
-                    type: qType,
-                    word,
-                    question: `Яка найвища форма прикметника "${word.word}" (${word.translation})?`,
-                    correctAnswer: word.superlative,
-                    options: opts,
-                };
-            }
-
             default:
                 return null;
         }
@@ -226,7 +207,12 @@ export class ExamService {
     }
 
     private shuffle<T>(arr: T[]): T[] {
-        return [...arr].sort(() => Math.random() - 0.5);
+        const result = [...arr];
+        for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
     }
 
     private randomFrom<T>(arr: T[]): T {

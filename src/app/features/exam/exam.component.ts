@@ -13,10 +13,10 @@ type ExamMode = 'topic' | 'hardest' | 'new' | 'random';
 type ExamPhase = 'loading' | 'question' | 'result';
 
 @Component({
-    selector: 'app-exam',
-    standalone: true,
-    imports: [NavbarComponent],
-    template: `
+  selector: 'app-exam',
+  standalone: true,
+  imports: [NavbarComponent],
+  template: `
     <div class="min-h-screen bg-gray-50 dark:bg-gray-950">
       <app-navbar />
       <div class="page-container">
@@ -130,183 +130,180 @@ type ExamPhase = 'loading' | 'question' | 'result';
   `,
 })
 export class ExamComponent implements OnInit {
-    private route = inject(ActivatedRoute);
-    private router = inject(Router);
-    private auth = inject(AuthService);
-    private firestore = inject(FirestoreService);
-    private progressService = inject(ProgressService);
-    private examService = inject(ExamService);
-    private toast = inject(ToastService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private auth = inject(AuthService);
+  private firestore = inject(FirestoreService);
+  private progressService = inject(ProgressService);
+  private examService = inject(ExamService);
+  private toast = inject(ToastService);
 
-    phase = signal<ExamPhase>('loading');
-    questions = signal<ExamQuestion[]>([]);
-    results = signal<ExamResult[]>([]);
-    currentIndex = signal(0);
-    selectedAnswer = signal('');
-    answerFeedback = signal<'correct' | 'wrong' | null>(null);
-    correctCount = signal(0);
+  phase = signal<ExamPhase>('loading');
+  questions = signal<ExamQuestion[]>([]);
+  results = signal<ExamResult[]>([]);
+  currentIndex = signal(0);
+  answerFeedback = signal<'correct' | 'wrong' | null>(null);
+  correctCount = signal(0);
 
-    private mode: ExamMode = 'topic';
-    private topicId: string = '';
-    private allWords: WordWithProgress[] = [];
+  private mode: ExamMode = 'topic';
+  private topicId: string = '';
+  private allWords: WordWithProgress[] = [];
 
-    private get uid(): string { return this.auth.user()?.uid ?? ''; }
+  private get uid(): string { return this.auth.user()?.uid ?? ''; }
 
-    async ngOnInit(): Promise<void> {
-        this.topicId = this.route.snapshot.paramMap.get('topicId') ?? '';
-        const routeMode = this.route.snapshot.paramMap.get('mode') ?? this.route.snapshot.data['mode'];
-        this.mode = (routeMode as ExamMode) ?? 'topic';
+  async ngOnInit(): Promise<void> {
+    this.topicId = this.route.snapshot.paramMap.get('topicId') ?? '';
+    const routeMode = this.route.snapshot.paramMap.get('mode') ?? this.route.snapshot.data['mode'];
+    this.mode = (routeMode as ExamMode) ?? 'topic';
 
-        await this.loadAndStart();
+    await this.loadAndStart();
+  }
+
+  private async loadAndStart(): Promise<void> {
+    this.phase.set('loading');
+    try {
+      await this.loadWords();
+      this.startExam();
+    } catch (e: any) {
+      this.toast.error(`Помилка іспиту: ${e.message}`);
+      this.router.navigate(['/learn']);
+    }
+  }
+
+  private async loadWords(): Promise<void> {
+    const allProgress = await this.firestore.getAllWordProgress(this.uid);
+
+    if (this.mode === 'topic' && this.topicId) {
+      const rawWords = await this.firestore.getWords(this.uid, this.topicId);
+      const topicProgress = await this.firestore.getWordProgressForTopic(this.uid, this.topicId);
+      this.allWords = this.progressService.mergeWordsWithProgress(rawWords, topicProgress);
+    } else {
+      // Global exam — get all words across all topics
+      const topics = await this.firestore.getTopics(this.uid);
+      const allWordsArr: WordWithProgress[] = [];
+      for (const topic of topics) {
+        const rawWords = await this.firestore.getWords(this.uid, topic.id!);
+        const merged = this.progressService.mergeWordsWithProgress(rawWords, allProgress.filter(p => p.topicId === topic.id));
+        allWordsArr.push(...merged);
+      }
+      this.allWords = allWordsArr;
+    }
+  }
+
+  private startExam(): void {
+    const n = APP_CONFIG.examQuestionsPerSession;
+    let selectedWords: WordWithProgress[];
+
+    switch (this.mode) {
+      case 'hardest':
+        selectedWords = this.progressService.getHardestWords(this.allWords).slice(0, n);
+        break;
+      case 'new':
+        selectedWords = this.progressService.getLeastSeenWords(this.allWords).slice(0, n);
+        break;
+      case 'random':
+        selectedWords = this.progressService.getRandomWords(this.allWords).slice(0, n);
+        break;
+      default:
+        selectedWords = this.progressService.getTopicPriorityWords(this.allWords);
     }
 
-    private async loadAndStart(): Promise<void> {
-        this.phase.set('loading');
-        try {
-            await this.loadWords();
-            this.startExam();
-        } catch (e: any) {
-            this.toast.error(`Помилка іспиту: ${e.message}`);
-            this.router.navigate(['/learn']);
-        }
+    if (selectedWords.length === 0) {
+      this.toast.warning('Недостатньо слів для іспиту.');
+      this.router.navigate(['/learn']);
+      return;
     }
 
-    private async loadWords(): Promise<void> {
-        const allProgress = await this.firestore.getAllWordProgress(this.uid);
+    const qs = this.examService.generateQuestions(selectedWords, n);
+    this.questions.set(qs);
+    this.results.set([]);
+    this.currentIndex.set(0);
+    this.correctCount.set(0);
+    this.answerFeedback.set(null);
+    this.phase.set('question');
+  }
 
-        if (this.mode === 'topic' && this.topicId) {
-            const rawWords = await this.firestore.getWords(this.uid, this.topicId);
-            const topicProgress = await this.firestore.getWordProgressForTopic(this.uid, this.topicId);
-            this.allWords = this.progressService.mergeWordsWithProgress(rawWords, topicProgress);
-        } else {
-            // Global exam — get all words across all topics
-            const topics = await this.firestore.getTopics(this.uid);
-            const allWordsArr: WordWithProgress[] = [];
-            for (const topic of topics) {
-                const rawWords = await this.firestore.getWords(this.uid, topic.id!);
-                const merged = this.progressService.mergeWordsWithProgress(rawWords, allProgress.filter(p => p.topicId === topic.id));
-                allWordsArr.push(...merged);
-            }
-            this.allWords = allWordsArr;
-        }
+  currentQuestion(): ExamQuestion | null {
+    return this.questions()[this.currentIndex()] ?? null;
+  }
+
+  async selectAnswer(option: string): Promise<void> {
+    if (this.answerFeedback()) return;
+
+    const q = this.currentQuestion();
+    if (!q) return;
+
+    const isCorrect = option === q.correctAnswer;
+    this.answerFeedback.set(isCorrect ? 'correct' : 'wrong');
+    if (isCorrect) this.correctCount.update(c => c + 1);
+
+    this.results.update(r => [...r, { question: q, selectedAnswer: option, isCorrect }]);
+
+    // Update progress in Firestore
+    try {
+      await this.firestore.updateWordProgress(this.uid, q.word.id!, q.word.topicId, isCorrect);
+    } catch {/* non-fatal */ }
+  }
+
+  nextQuestion(): void {
+    if (this.currentIndex() + 1 >= this.questions().length) {
+      this.phase.set('result');
+    } else {
+      this.currentIndex.update(i => i + 1);
+      this.answerFeedback.set(null);
     }
+  }
 
-    private startExam(): void {
-        const n = APP_CONFIG.examQuestionsPerSession;
-        let selectedWords: WordWithProgress[];
-
-        switch (this.mode) {
-            case 'hardest':
-                selectedWords = this.progressService.getHardestWords(this.allWords).slice(0, n);
-                break;
-            case 'new':
-                selectedWords = this.progressService.getLeastSeenWords(this.allWords).slice(0, n);
-                break;
-            case 'random':
-                selectedWords = this.progressService.getRandomWords(this.allWords).slice(0, n);
-                break;
-            default:
-                selectedWords = this.allWords;
-        }
-
-        if (selectedWords.length === 0) {
-            this.toast.warning('Недостатньо слів для іспиту.');
-            this.router.navigate(['/learn']);
-            return;
-        }
-
-        const qs = this.examService.generateQuestions(selectedWords, n);
-        this.questions.set(qs);
-        this.results.set([]);
-        this.currentIndex.set(0);
-        this.correctCount.set(0);
-        this.answerFeedback.set(null);
-        this.phase.set('question');
+  optionClass(option: string): string {
+    const q = this.currentQuestion();
+    if (!this.answerFeedback()) {
+      return 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20';
     }
-
-    currentQuestion(): ExamQuestion | null {
-        return this.questions()[this.currentIndex()] ?? null;
+    if (option === q?.correctAnswer) {
+      return 'border-green-400 dark:border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200';
     }
-
-    async selectAnswer(option: string): Promise<void> {
-        if (this.answerFeedback()) return;
-
-        const q = this.currentQuestion();
-        if (!q) return;
-
-        const isCorrect = option === q.correctAnswer;
-        this.answerFeedback.set(isCorrect ? 'correct' : 'wrong');
-        if (isCorrect) this.correctCount.update(c => c + 1);
-
-        this.results.update(r => [...r, { question: q, selectedAnswer: option, isCorrect }]);
-
-        // Update progress in Firestore
-        try {
-            await this.firestore.updateWordProgress(this.uid, q.word.id!, q.word.topicId, isCorrect);
-        } catch {/* non-fatal */ }
+    if (option === this.results()[this.results().length - 1]?.selectedAnswer) {
+      return 'border-red-400 dark:border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200';
     }
+    return 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-600';
+  }
 
-    nextQuestion(): void {
-        if (this.currentIndex() + 1 >= this.questions().length) {
-            this.phase.set('result');
-        } else {
-            this.currentIndex.update(i => i + 1);
-            this.answerFeedback.set(null);
-        }
-    }
+  questionTypeLabel(): string {
+    const labels: Record<string, string> = {
+      'translate-pt-ua': 'Переклад: Португальська → Українська',
+      'translate-ua-pt': 'Переклад: Українська → Португальська',
+      'gender': 'Граматика: Рід іменника',
+      'plural': 'Граматика: Множина іменника',
+      'conjugation': 'Граматика: Дієвідмінювання',
+    };
+    return labels[this.currentQuestion()?.type ?? ''] ?? 'Питання';
+  }
 
-    optionClass(option: string): string {
-        const q = this.currentQuestion();
-        if (!this.answerFeedback()) {
-            return 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20';
-        }
-        if (option === q?.correctAnswer) {
-            return 'border-green-400 dark:border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200';
-        }
-        if (option === this.results()[this.results().length - 1]?.selectedAnswer) {
-            return 'border-red-400 dark:border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200';
-        }
-        return 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-600';
-    }
+  scoreEmoji(): string {
+    const ratio = this.correctCount() / this.questions().length;
+    if (ratio === 1) return '🏆';
+    if (ratio >= 0.8) return '⭐';
+    if (ratio >= 0.6) return '👍';
+    return '📚';
+  }
 
-    questionTypeLabel(): string {
-        const labels: Record<string, string> = {
-            'translate-pt-ua': 'Переклад: Португальська → Українська',
-            'translate-ua-pt': 'Переклад: Українська → Португальська',
-            'gender': 'Граматика: Рід іменника',
-            'plural': 'Граматика: Множина іменника',
-            'conjugation': 'Граматика: Дієвідмінювання',
-            'comparative': 'Граматика: Порівняльна ступінь',
-            'superlative': 'Граматика: Найвища ступінь',
-        };
-        return labels[this.currentQuestion()?.type ?? ''] ?? 'Питання';
-    }
+  scoreMessage(): string {
+    const ratio = this.correctCount() / this.questions().length;
+    if (ratio === 1) return 'Ідеальний результат! Бездоганно!';
+    if (ratio >= 0.8) return 'Відмінно! Продовжуйте в тому ж дусі!';
+    if (ratio >= 0.6) return 'Непогано! Ще трохи практики — і буде чудово.';
+    return 'Треба більше практики. Не здавайтесь!';
+  }
 
-    scoreEmoji(): string {
-        const ratio = this.correctCount() / this.questions().length;
-        if (ratio === 1) return '🏆';
-        if (ratio >= 0.8) return '⭐';
-        if (ratio >= 0.6) return '👍';
-        return '📚';
-    }
+  async restartExam(): Promise<void> {
+    await this.loadAndStart();
+  }
 
-    scoreMessage(): string {
-        const ratio = this.correctCount() / this.questions().length;
-        if (ratio === 1) return 'Ідеальний результат! Бездоганно!';
-        if (ratio >= 0.8) return 'Відмінно! Продовжуйте в тому ж дусі!';
-        if (ratio >= 0.6) return 'Непогано! Ще трохи практики — і буде чудово.';
-        return 'Треба більше практики. Не здавайтесь!';
+  exit(): void {
+    if (this.topicId && this.mode === 'topic') {
+      this.router.navigate(['/learn', this.topicId]);
+    } else {
+      this.router.navigate(['/learn']);
     }
-
-    async restartExam(): Promise<void> {
-        await this.loadAndStart();
-    }
-
-    exit(): void {
-        if (this.topicId && this.mode === 'topic') {
-            this.router.navigate(['/learn', this.topicId]);
-        } else {
-            this.router.navigate(['/learn']);
-        }
-    }
+  }
 }

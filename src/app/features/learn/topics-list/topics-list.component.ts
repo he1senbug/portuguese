@@ -1,5 +1,5 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { Router, RouterModule } from '@angular/router';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../services/auth.service';
 import { FirestoreService } from '../../../services/firestore.service';
@@ -8,7 +8,7 @@ import { ProgressService } from '../../../services/progress.service';
 import { ToastService } from '../../../services/toast.service';
 import { NetworkStatusService } from '../../../services/network-status.service';
 import { NavbarComponent } from '../../../shared/navbar/navbar.component';
-import { TopicWithProgress, WordProgress } from '../../../core/models';
+import { TopicWithProgress } from '../../../core/models';
 
 @Component({
   selector: 'app-topics-list',
@@ -216,17 +216,38 @@ export class TopicsListComponent implements OnInit {
     if (!result) return;
 
     try {
+      // Deduplicate against existing words
+      const existingWords = await this.firestore.getAllWords(this.uid);
+      const existingWordStrings = new Set(existingWords.map(w => w.word.toLowerCase().trim()));
+
+      const seenNow = new Set<string>();
+      const filteredWords: any[] = [];
+
+      for (const w of result.words) {
+        const key = w.word.toLowerCase().trim();
+        if (!existingWordStrings.has(key) && !seenNow.has(key)) {
+          filteredWords.push(w);
+          seenNow.add(key);
+        }
+      }
+
+      if (filteredWords.length === 0) {
+        this.toast.info(`Всі слова з теми "${result.topicTitle}" вже вивчені в інших темах!`);
+        return;
+      }
+
       const topicId = await this.firestore.addTopic(this.uid, {
         title: result.topicTitle,
         createdAt: new Date(),
-        wordCount: result.words.length,
+        wordCount: filteredWords.length,
         userId: this.uid,
       });
       await this.firestore.addWords(
         this.uid, topicId,
-        result.words.map(w => ({ ...w, topicId }))
+        filteredWords.map(w => ({ ...w, topicId }))
       );
-      this.toast.success(`Тема "${result.topicTitle}" створена — ${result.words.length} слів!`);
+
+      this.toast.success(`Тема "${result.topicTitle}" створена — ${filteredWords.length} слів!`);
       await this.loadTopics();
     } catch (e: any) {
       this.toast.error(`Помилка збереження: ${e.message}`);

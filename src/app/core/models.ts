@@ -66,7 +66,7 @@ export interface WordWithProgress extends Word {
 }
 
 export interface ExamQuestion {
-    type: 'translate-pt-ua' | 'translate-ua-pt' | 'gender' | 'plural' | 'conjugation' | 'comparative' | 'superlative';
+    type: 'translate-pt-ua' | 'translate-ua-pt' | 'gender' | 'plural' | 'conjugation';
     word: WordWithProgress;
     question: string;
     correctAnswer: string;

@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { APP_CONFIG, ModelMode } from '../core/app.constants';
 import { ToastService } from './toast.service';
 import { Word } from '../core/models';
