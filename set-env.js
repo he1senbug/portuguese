@@ -6,10 +6,16 @@ const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.en
 
 // Allow fallback if no .env exists (e.g. in CI where secrets are injected via sed)
 if (!fs.existsSync(path.resolve(__dirname, envFile)) && !process.env.FIREBASE_API_KEY) {
-    console.warn(`[set-env] Warning: No ${envFile} found and FIREBASE_API_KEY is not set in environment.`);
+  console.warn(`[set-env] Warning: No ${envFile} found and FIREBASE_API_KEY is not set in environment.`);
 }
 
-const targetPath = path.resolve(__dirname, './src/environments/firebase.config.ts');
+const targetDir = path.resolve(__dirname, './src/environments');
+const targetPath = path.join(targetDir, 'firebase.config.ts');
+
+// Create directory if it doesn't exist (needed for CI)
+if (!fs.existsSync(targetDir)) {
+  fs.mkdirSync(targetDir, { recursive: true });
+}
 const envConfigFile = `export const firebaseConfig = {
   apiKey: '${process.env.FIREBASE_API_KEY || 'REPLACE_API_KEY'}',
   authDomain: '${process.env.FIREBASE_AUTH_DOMAIN || 'REPLACE_AUTH_DOMAIN'}',
