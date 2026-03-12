@@ -10,8 +10,12 @@ export class FirestoreService {
     private db = inject(Firestore);
 
     constructor() {
-        // Enable offline persistence
-        enableIndexedDbPersistence(this.db).catch(() => {/* may fail in multi-tab */ });
+        console.log('[Firestore] Initializing Firestore Service');
+        enableIndexedDbPersistence(this.db).then(() => {
+            console.log('[Firestore] Persistence enabled');
+        }).catch((err) => {
+            console.warn('[Firestore] Persistence failed (expected in many cases):', err.code);
+        });
     }
 
     // ─── Topics ───────────────────────────────────────────────────────────────
@@ -28,19 +32,26 @@ export class FirestoreService {
     }
 
     async getTopics(userId: string): Promise<Topic[]> {
+        console.log(`[Firestore] Fetching topics for user: ${userId}`);
         const q = query(
             collection(this.db, `users/${userId}/topics`),
             orderBy('createdAt', 'desc')
         );
-        const snap = await getDocs(q);
-        return snap.docs.map(d => {
-            const data = d.data();
-            return {
-                ...data,
-                id: d.id,
-                createdAt: (data['createdAt'] as Timestamp).toDate(),
-            } as Topic;
-        });
+        try {
+            const snap = await getDocs(q);
+            console.log(`[Firestore] Found ${snap.docs.length} topics`);
+            return snap.docs.map(d => {
+                const data = d.data();
+                return {
+                    ...data,
+                    id: d.id,
+                    createdAt: (data['createdAt'] as Timestamp).toDate(),
+                } as Topic;
+            });
+        } catch (err) {
+            console.error('[Firestore] Error fetching topics:', err);
+            throw err;
+        }
     }
 
     async deleteTopic(userId: string, topicId: string): Promise<void> {

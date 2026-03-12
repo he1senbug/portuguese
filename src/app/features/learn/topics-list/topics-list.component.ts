@@ -175,10 +175,17 @@ export class TopicsListComponent implements OnInit {
   }
 
   private async loadTopics(): Promise<void> {
+    console.log('[TopicsList] loadTopics starting, uid:', this.uid);
+    if (!this.uid) {
+      console.warn('[TopicsList] No UID yet, skipping fetch');
+      this.loading.set(false);
+      return;
+    }
     this.loading.set(true);
     try {
       const rawTopics = await this.firestore.getTopics(this.uid);
       const allProgress = await this.firestore.getAllWordProgress(this.uid);
+      console.log(`[TopicsList] Data loaded: ${rawTopics.length} topics, ${allProgress.length} progress records`);
 
       const topicsWithProgress: TopicWithProgress[] = rawTopics.map(t => {
         const topicProgress = allProgress.filter(p => p.topicId === t.id);
