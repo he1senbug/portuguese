@@ -7,6 +7,7 @@ import { FirestoreService } from '../../services/firestore.service';
 import { ToastService } from '../../services/toast.service';
 import { NavbarComponent } from '../../shared/navbar/navbar.component';
 import { APP_CONFIG, ModelMode } from '../../core/app.constants';
+import { PwaService } from '../../services/pwa.service';
 
 @Component({
   selector: 'app-settings',
@@ -105,21 +106,27 @@ import { APP_CONFIG, ModelMode } from '../../core/app.constants';
         <div class="card p-5">
           <h2 class="font-semibold text-gray-900 dark:text-white mb-1">📱 Встановити як застосунок</h2>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            Встановіть Português як окремий застосунок на ваш телефон або комп'ютер для кращого досвіду.
+            Отримайте швидкий доступ до Português та можливість навчатися навіть без інтернету.
           </p>
-          @if (canInstallPwa()) {
-            <button id="btn-pwa-install" (click)="installPwa()" class="btn-primary">
-              📲 Встановити застосунок
+          
+          @if (pwa.isInstallable()) {
+            <button id="btn-pwa-install" (click)="pwa.install()" 
+              class="w-full btn-primary flex items-center justify-center gap-2 mb-4">
+              📲 Встановити зараз
             </button>
-          } @else {
-            <div class="text-sm text-gray-500 dark:text-gray-400">
-              @if (pwaInstalled()) {
-                ✅ Застосунок вже встановлено
-              } @else {
-                💡 Відкрийте у браузері Chrome/Edge і натисніть «Встановити» у адресному рядку
-              }
+          } @else if (pwa.isInstalled()) {
+            <div class="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 p-3 rounded-xl text-sm mb-2 text-center">
+              ✅ Застосунок вже встановлено
             </div>
           }
+
+          <div class="text-sm text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 p-4 rounded-xl">
+            <p class="font-medium mb-2 text-gray-900 dark:text-gray-200">Як встановити вручну:</p>
+            <ul class="space-y-2 text-xs list-disc list-inside">
+              <li><span class="font-medium text-gray-800 dark:text-gray-300">Android (Chrome):</span> Натисніть на три крапки (⋮) і виберіть «Додати до головного екрана»</li>
+              <li><span class="font-medium text-gray-800 dark:text-gray-300">iOS (Safari):</span> Натисніть кнопку «Поділитися» (↑) і виберіть «Додати на початковий екран»</li>
+            </ul>
+          </div>
         </div>
 
         <!-- Account -->
@@ -149,31 +156,14 @@ export class SettingsComponent implements OnInit {
   modelMode = signal<ModelMode>('gradual');
   selectedModel = signal(APP_CONFIG.modelsGradual[0] as string);
   models = APP_CONFIG.modelsManual;
-  canInstallPwa = signal(false);
-  pwaInstalled = signal(false);
+  pwa = inject(PwaService);
   userEmail = signal('');
-
-  private deferredPrompt: any = null;
 
   ngOnInit(): void {
     this.apiKey = localStorage.getItem(APP_CONFIG.storageKeys.geminiApiKey) ?? '';
     this.modelMode.set((localStorage.getItem(APP_CONFIG.storageKeys.modelMode) as ModelMode) ?? 'gradual');
     this.selectedModel.set(localStorage.getItem(APP_CONFIG.storageKeys.selectedModel) ?? APP_CONFIG.modelsGradual[0]);
     this.userEmail.set(this.auth.user()?.email ?? '');
-
-    // PWA install prompt
-    window.addEventListener('beforeinstallprompt', (e: any) => {
-      e.preventDefault();
-      this.deferredPrompt = e;
-      this.canInstallPwa.set(true);
-    });
-    window.addEventListener('appinstalled', () => {
-      this.pwaInstalled.set(true);
-      this.canInstallPwa.set(false);
-    });
-    if (window.matchMedia?.('(display-mode: standalone)')?.matches) {
-      this.pwaInstalled.set(true);
-    }
   }
 
   setTheme(theme: 'dark' | 'light'): void {
@@ -210,17 +200,6 @@ export class SettingsComponent implements OnInit {
         selectedModel: this.selectedModel(),
       });
     } catch {/* non-fatal */ }
-  }
-
-  async installPwa(): Promise<void> {
-    if (!this.deferredPrompt) return;
-    this.deferredPrompt.prompt();
-    const { outcome } = await this.deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      this.toast.success('Застосунок встановлено! 🎉');
-      this.canInstallPwa.set(false);
-    }
-    this.deferredPrompt = null;
   }
 
   async logout(): Promise<void> {

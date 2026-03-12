@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, effect } from '@angular/core';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../services/auth.service';
@@ -170,14 +170,25 @@ export class TopicsListComponent implements OnInit {
     return this.auth.user()?.uid ?? '';
   }
 
+  constructor() {
+    // Use an effect to reload topics whenever the user changes
+    effect(() => {
+      const user = this.auth.user();
+      if (user) {
+        this.loadTopics();
+      } else if (user === null) {
+        this.topics.set([]);
+        this.loading.set(false);
+      }
+    }, { allowSignalWrites: true });
+  }
+
   async ngOnInit(): Promise<void> {
-    await this.loadTopics();
+    // Initial load handled by effect
   }
 
   private async loadTopics(): Promise<void> {
-    console.log('[TopicsList] loadTopics starting, uid:', this.uid);
     if (!this.uid) {
-      console.warn('[TopicsList] No UID yet, skipping fetch');
       this.loading.set(false);
       return;
     }
@@ -185,7 +196,6 @@ export class TopicsListComponent implements OnInit {
     try {
       const rawTopics = await this.firestore.getTopics(this.uid);
       const allProgress = await this.firestore.getAllWordProgress(this.uid);
-      console.log(`[TopicsList] Data loaded: ${rawTopics.length} topics, ${allProgress.length} progress records`);
 
       const topicsWithProgress: TopicWithProgress[] = rawTopics.map(t => {
         const topicProgress = allProgress.filter(p => p.topicId === t.id);
