@@ -32,10 +32,10 @@ import { WordCardComponent } from '../word-card/word-card.component';
                   <span class="text-sm font-semibold text-primary-600 dark:text-primary-400">{{ topicProgress() }}%</span>
                 </div>
               </div>
-              <button id="btn-start-exam" (click)="startExam()"
+              <button id="btn-start-learn" (click)="startExam()"
                 [disabled]="words().length === 0"
                 class="btn-primary whitespace-nowrap">
-                🎓 Іспит
+                📖 Навчання
               </button>
             </div>
           </div>

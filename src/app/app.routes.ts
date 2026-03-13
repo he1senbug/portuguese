@@ -39,7 +39,7 @@ export const routes: Routes = [
             {
                 path: ':topicId/exam',
                 loadComponent: () => import('./features/exam/exam.component').then(m => m.ExamComponent),
-                data: { mode: 'topic' }
+                data: { mode: 'learn' }
             },
         ]
     },

@@ -68,18 +68,12 @@ export class ExamService {
             case 'translate-pt-ua': {
                 const cleanWord = word.word.replace(/^[OoAa]s? /, '');
                 // Primary source: AI provided distractor translations
-                let wrongOpts = word.distractorTranslations || [];
+                let wrongOpts = [...(word.distractorTranslations || [])];
 
-                // Secondary source: other words of the same type in the topic
-                if (wrongOpts.length < 3) {
-                    const otherSameType = allWords
-                        .filter(w => w.id !== word.id && w.type === word.type)
-                        .map(w => w.translation);
-                    wrongOpts = [...wrongOpts, ...otherSameType];
-                }
+                // Tertiary source: any other words in the topic (AS FALLBACK ONLY)
+                const uniqueWrong = () => Array.from(new Set(wrongOpts.filter(o => o !== word.translation && !!o)));
 
-                // Tertiary source: any other words in the topic
-                if (wrongOpts.length < 3) {
+                if (uniqueWrong().length < 3) {
                     const anyOther = allWords
                         .filter(w => w.id !== word.id)
                         .map(w => w.translation);
@@ -98,14 +92,16 @@ export class ExamService {
 
             case 'translate-ua-pt': {
                 // Primary source: AI provided distractors (Portuguese words)
-                let wrongOpts = word.distractors || [];
+                let wrongOpts = [...(word.distractors || [])];
 
-                // Secondary fallback
-                if (wrongOpts.length < 3) {
-                    const otherSameType = allWords
-                        .filter(w => w.id !== word.id && w.type === word.type)
+                // Tertiary fallback: any other words (AS FALLBACK ONLY)
+                const uniqueWrong = () => Array.from(new Set(wrongOpts.filter(o => o !== word.word && !!o)));
+
+                if (uniqueWrong().length < 3) {
+                    const anyOther = allWords
+                        .filter(w => w.id !== word.id)
                         .map(w => w.word);
-                    wrongOpts = [...wrongOpts, ...otherSameType];
+                    wrongOpts = [...wrongOpts, ...anyOther];
                 }
 
                 const opts = this.ensureCorrectInOptions(wrongOpts, word.word);
@@ -194,7 +190,7 @@ export class ExamService {
         word: WordWithProgress,
         allWords: WordWithProgress[]
     ): WordWithProgress[] {
-        // First use distractors (as fake words), then fill with actual words from the list
+        // Fallback method to get some words if nothing else is available
         const sameTypeWords = allWords
             .filter(w => w.id !== word.id && w.type === word.type)
             .sort(() => Math.random() - 0.5);

@@ -9,7 +9,7 @@ import { NavbarComponent } from '../../shared/navbar/navbar.component';
 import { ExamQuestion, ExamResult, WordWithProgress } from '../../core/models';
 import { APP_CONFIG } from '../../core/app.constants';
 
-type ExamMode = 'topic' | 'hardest' | 'new' | 'random';
+type ExamMode = 'topic' | 'hardest' | 'new' | 'random' | 'learn';
 type ExamPhase = 'loading' | 'question' | 'result';
 
 @Component({
@@ -32,13 +32,18 @@ type ExamPhase = 'loading' | 'question' | 'result';
             <!-- Progress header -->
             <div class="mb-6">
               <div class="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
-                <span>Питання {{ currentIndex() + 1 }} з {{ questions().length }}</span>
+                <span>
+                  Питання {{ currentIndex() + 1 }}
+                  @if (mode !== 'learn') { з {{ questions().length }} }
+                </span>
                 <span>{{ correctCount() }} правильних</span>
               </div>
-              <div class="progress-bar-bg">
-                <div class="progress-bar-fill transition-all duration-500"
-                  [style.width.%]="((currentIndex()) / questions().length) * 100"></div>
-              </div>
+              @if (mode !== 'learn') {
+                <div class="progress-bar-bg">
+                  <div class="progress-bar-fill transition-all duration-500"
+                    [style.width.%]="((currentIndex()) / questions().length) * 100"></div>
+                </div>
+              }
             </div>
 
             <!-- Question card -->
@@ -82,7 +87,7 @@ type ExamPhase = 'loading' | 'question' | 'result';
                 }
               </div>
               <button (click)="nextQuestion()" class="btn-primary w-full mt-3">
-                {{ currentIndex() + 1 < questions().length ? 'Далі →' : 'Завершити іспит' }}
+                {{ (mode === 'learn' || currentIndex() + 1 < questions().length) ? 'Далі →' : 'Завершити іспит' }}
               </button>
             }
           </div>
@@ -91,14 +96,18 @@ type ExamPhase = 'loading' | 'question' | 'result';
         @if (phase() === 'result') {
           <div class="animate-fade-in text-center">
             <div class="text-6xl mb-4">{{ scoreEmoji() }}</div>
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Іспит завершено!</h1>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              {{ mode === 'learn' ? 'Навчання завершено!' : 'Іспит завершено!' }}
+            </h1>
             <div class="text-5xl font-bold my-4"
-              [class]="correctCount() >= questions().length * 0.7
+              [class]="mode === 'learn' || correctCount() >= questions().length * 0.7
                 ? 'text-accent-500' : 'text-red-500'">
-              {{ correctCount() }}/{{ questions().length }}
+              {{ correctCount() }}
+              @if (mode !== 'learn') { /{{ questions().length }} }
+              @else { правильних відповідей }
             </div>
             <p class="text-gray-500 dark:text-gray-400 mb-8">
-              {{ scoreMessage() }}
+              {{ mode === 'learn' ? 'Чудова робота! Ви стали ще на крок ближче до вільного володіння португальською.' : scoreMessage() }}
             </p>
 
             <!-- Results breakdown -->
@@ -145,7 +154,7 @@ export class ExamComponent implements OnInit {
   answerFeedback = signal<'correct' | 'wrong' | null>(null);
   correctCount = signal(0);
 
-  private mode: ExamMode = 'topic';
+  mode: ExamMode = 'topic';
   private topicId: string = '';
   private allWords: WordWithProgress[] = [];
 
@@ -191,21 +200,26 @@ export class ExamComponent implements OnInit {
   }
 
   private startExam(): void {
-    const n = APP_CONFIG.examQuestionsPerSession;
+    let n = APP_CONFIG.examQuestionsPerSession;
     let selectedWords: WordWithProgress[];
 
-    switch (this.mode) {
-      case 'hardest':
-        selectedWords = this.progressService.getHardestWords(this.allWords).slice(0, n);
-        break;
-      case 'new':
-        selectedWords = this.progressService.getLeastSeenWords(this.allWords).slice(0, n);
-        break;
-      case 'random':
-        selectedWords = this.progressService.getRandomWords(this.allWords).slice(0, n);
-        break;
-      default:
-        selectedWords = this.progressService.getTopicPriorityWords(this.allWords);
+    if (this.mode === 'learn') {
+      // For learning mode, we don't slice by n initially, we take everything and shuffle
+      selectedWords = this.progressService.getTopicPriorityWords(this.allWords);
+    } else {
+      switch (this.mode) {
+        case 'hardest':
+          selectedWords = this.progressService.getHardestWords(this.allWords).slice(0, n);
+          break;
+        case 'new':
+          selectedWords = this.progressService.getLeastSeenWords(this.allWords).slice(0, n);
+          break;
+        case 'random':
+          selectedWords = this.progressService.getRandomWords(this.allWords).slice(0, n);
+          break;
+        default:
+          selectedWords = this.progressService.getTopicPriorityWords(this.allWords);
+      }
     }
 
     if (selectedWords.length === 0) {
@@ -214,7 +228,10 @@ export class ExamComponent implements OnInit {
       return;
     }
 
-    const qs = this.examService.generateQuestions(selectedWords, n);
+    // In learn mode, we might want to generate more questions if the topic is small
+    const questionsCount = this.mode === 'learn' ? Math.max(selectedWords.length, 20) : n;
+    const qs = this.examService.generateQuestions(selectedWords, questionsCount);
+
     this.questions.set(qs);
     this.results.set([]);
     this.currentIndex.set(0);
@@ -246,11 +263,21 @@ export class ExamComponent implements OnInit {
   }
 
   nextQuestion(): void {
-    if (this.currentIndex() + 1 >= this.questions().length) {
-      this.phase.set('result');
-    } else {
+    if (this.mode === 'learn') {
+      // If we are near the end of the question list, generate more
+      if (this.currentIndex() + 5 >= this.questions().length) {
+        const moreQs = this.examService.generateQuestions(this.allWords, 10);
+        this.questions.update(qs => [...qs, ...moreQs]);
+      }
       this.currentIndex.update(i => i + 1);
       this.answerFeedback.set(null);
+    } else {
+      if (this.currentIndex() + 1 >= this.questions().length) {
+        this.phase.set('result');
+      } else {
+        this.currentIndex.update(i => i + 1);
+        this.answerFeedback.set(null);
+      }
     }
   }
 

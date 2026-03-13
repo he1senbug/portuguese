@@ -84,7 +84,7 @@ import { TopicWithProgress } from '../../../core/models';
                   </div>
                   <div class="flex items-center gap-2">
                     <button (click)="requestDeleteTopic($event, topic)"
-                      class="opacity-0 group-hover:opacity-100 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50
+                      class="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50
                              dark:hover:bg-red-900/20 rounded-lg transition-all duration-200"
                       title="Видалити тему">
                       🗑️
